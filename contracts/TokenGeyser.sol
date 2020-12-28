@@ -513,4 +513,40 @@ contract TokenGeyser is IStaking, Ownable {
 
         return _stakingPool.rescueFunds(tokenToRescue, to, amount);
     }
+	
+	/**
+     * @return The total number of distribution tokens that would be rewarded.
+    */
+    function rewardPreview() public view returns (uint256) {
+
+        // checks
+        uint256 amount = totalStakedFor(msg.sender);
+        uint256 stakingSharesToBurn = totalStakingShares.mul(amount).div(totalStaked());
+
+        // 1. User Accounting
+        Stake[] storage accountStakes = _userStakes[msg.sender];
+
+        // Redeem from most recent stake and go backwards in time.
+        uint256 sharesLeftToBurn = stakingSharesToBurn;
+        uint256 rewardAmount = 0;
+        while (sharesLeftToBurn > 0) {
+            Stake storage lastStake = accountStakes[accountStakes.length - 1];
+            uint256 stakeTimeSec = now.sub(lastStake.timestampSec);
+            uint256 newStakingShareSecondsToBurn = 0;
+            if (lastStake.stakingShares <= sharesLeftToBurn) {
+                // fully redeem a past stake
+                newStakingShareSecondsToBurn = lastStake.stakingShares.mul(stakeTimeSec);
+                rewardAmount = computeNewReward(rewardAmount, newStakingShareSecondsToBurn, stakeTimeSec);
+                // stakingShareSecondsToBurn = stakingShareSecondsToBurn.add(newStakingShareSecondsToBurn);
+                sharesLeftToBurn = sharesLeftToBurn.sub(lastStake.stakingShares);
+            } else {
+                // partially redeem a past stake
+                newStakingShareSecondsToBurn = sharesLeftToBurn.mul(stakeTimeSec);
+                rewardAmount = computeNewReward(rewardAmount, newStakingShareSecondsToBurn, stakeTimeSec);
+                // stakingShareSecondsToBurn = stakingShareSecondsToBurn.add(newStakingShareSecondsToBurn);
+                sharesLeftToBurn = 0;
+            }
+        }
+        return rewardAmount;
+    }
 }
