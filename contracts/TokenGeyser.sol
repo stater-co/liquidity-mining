@@ -519,34 +519,27 @@ contract TokenGeyser is IStaking, Ownable {
     */
     function rewardPreview() public view returns (uint256) {
 
-        // checks
-        uint256 amount = totalStakedFor(msg.sender);
-        uint256 stakingSharesToBurn = totalStakingShares.mul(amount).div(totalStaked());
+         // Global accounting
+        uint256 newStakingShareSeconds =
+            now
+            .sub(_lastAccountingTimestampSec)
+            .mul(totalStakingShares);
+        uint256 _totalStakingShareSecondsForReward = _totalStakingShareSeconds;
+        _totalStakingShareSecondsForReward = _totalStakingShareSecondsForReward.add(newStakingShareSeconds);
 
-        // 1. User Accounting
-        Stake[] storage accountStakes = _userStakes[msg.sender];
+        // User Accounting
+        UserTotals storage totals = _userTotals[msg.sender];
+        uint256 newUserStakingShareSeconds =
+            now
+            .sub(totals.lastAccountingTimestampSec)
+            .mul(totals.stakingShares);
+        
+        uint256 totalsStakingSharesSecondsForReward = totals.stakingShareSeconds.add(newUserStakingShareSeconds);
 
-        // Redeem from most recent stake and go backwards in time.
-        uint256 sharesLeftToBurn = stakingSharesToBurn;
-        uint256 rewardAmount = 0;
-        while (sharesLeftToBurn > 0) {
-            Stake storage lastStake = accountStakes[accountStakes.length - 1];
-            uint256 stakeTimeSec = now.sub(lastStake.timestampSec);
-            uint256 newStakingShareSecondsToBurn = 0;
-            if (lastStake.stakingShares <= sharesLeftToBurn) {
-                // fully redeem a past stake
-                newStakingShareSecondsToBurn = lastStake.stakingShares.mul(stakeTimeSec);
-                rewardAmount = computeNewReward(rewardAmount, newStakingShareSecondsToBurn, stakeTimeSec);
-                // stakingShareSecondsToBurn = stakingShareSecondsToBurn.add(newStakingShareSecondsToBurn);
-                sharesLeftToBurn = sharesLeftToBurn.sub(lastStake.stakingShares);
-            } else {
-                // partially redeem a past stake
-                newStakingShareSecondsToBurn = sharesLeftToBurn.mul(stakeTimeSec);
-                rewardAmount = computeNewReward(rewardAmount, newStakingShareSecondsToBurn, stakeTimeSec);
-                // stakingShareSecondsToBurn = stakingShareSecondsToBurn.add(newStakingShareSecondsToBurn);
-                sharesLeftToBurn = 0;
-            }
-        }
-        return rewardAmount;
+        uint256 totalUserRewards = (_totalStakingShareSecondsForReward > 0)
+            ? totalUnlocked().mul(totalsStakingSharesSecondsForReward).div(_totalStakingShareSecondsForReward)
+            : 0;
+
+        return totalUserRewards;
     }
 }
